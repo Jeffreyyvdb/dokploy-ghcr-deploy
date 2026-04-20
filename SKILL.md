@@ -31,7 +31,7 @@ Batch these into one `AskUserQuestion` call so the user answers once, not five t
 - **Dokploy app name** (default: `web`)
 - **Public domain** to attach (must already resolve to the Dokploy host; if they have a wildcard like `*.example.com`, suggest `<project>.example.com`)
 - **Dokploy base URL** (e.g. `https://dokploy.example.com`) — you cannot infer this; always ask
-- **Extra env vars** beyond `APP_ENV=production` — offer to skip; they can add more in the Dokploy UI later
+- **Extra env vars** beyond `APP_ENV=production` — offer to skip; they can add more in the Dokploy UI later. Validate each entry matches `^[A-Z_][A-Z0-9_]*=` and reject values containing raw newlines before sending to `application-saveEnvironment`, so a stray newline in one value can't silently inject another variable.
 
 ## Phase A — Repo prep
 
@@ -51,7 +51,7 @@ Sequential, fail-fast. Each tool call produces IDs you'll need for the next one 
    - `dockerImage: "ghcr.io/<lowercase-owner>/<lowercase-repo>:latest"`
    - `registryUrl: "ghcr.io"`
    - `username: "<lowercase-owner>"`
-   - `password: "PAT_PLACEHOLDER"` — the real GHCR PAT comes in Phase E; this stub keeps the MCP call valid.
+   - `password: "PAT_PLACEHOLDER"` — this stub keeps the MCP call valid and is **left in place**. The real PAT is set by the user directly in the Dokploy UI in Phase E, so it never transits this conversation.
 5. **`mcp__dokploy-mcp__application-saveEnvironment`** with:
    - `applicationId`
    - `createEnvFile: true`
@@ -75,13 +75,19 @@ gh secret set DOKPLOY_API_KEY --repo <owner>/<repo> --body "<api-key-from-B7>" &
 gh secret set DOKPLOY_APPLICATION_ID --repo <owner>/<repo> --body "<applicationId-from-B3>"
 ```
 
-Then smoke-test the API before pushing code:
+Then smoke-test the API before pushing code. `read -s` keeps the key out of `~/.bash_history`; the `unset` at the end clears it from the shell so it doesn't linger in the process environment:
 
 ```sh
-curl -fsS -o /dev/null -w "%{http_code}\n" -X POST "$DOKPLOY_URL/api/application.deploy" \
+read -rsp "Paste DOKPLOY_API_KEY (not echoed): " DOKPLOY_API_KEY; echo
+DOKPLOY_URL='https://your-dokploy.example.com'
+APP_ID='<applicationId from B3>'
+DOKPLOY_API_KEY="$DOKPLOY_API_KEY" \
+  curl -fsS --max-time 30 -o /dev/null -w "%{http_code}\n" \
+  -X POST "${DOKPLOY_URL%/}/api/application.deploy" \
   -H "x-api-key: $DOKPLOY_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"applicationId":"'$APP_ID'"}'
+  --data "$(jq -cn --arg id "$APP_ID" '{applicationId:$id}')"
+unset DOKPLOY_API_KEY
 ```
 
 Expect `200`. Anything else means the URL, key, or app ID is wrong — fix before moving on. The deploy will fail (no image has been pushed yet) but the trigger should succeed; this is proof the auth path is good.
@@ -97,14 +103,18 @@ Push the branch, open a PR with `gh pr create`. PR body should call out:
 
 GitHub has no API for minting PATs, so the user has to do this in the UI. Don't pretend otherwise.
 
+**The PAT must not transit this conversation.** A `read:packages` PAT in chat history is credential exposure — transcripts are routinely retained server-side, and the PAT can pull every private package the user can see. So the user pastes it straight into Dokploy, not into chat. Do **not** ask them to paste it here, and do **not** call `mcp__dokploy-mcp__application-saveDockerProvider` with the real value; the `PAT_PLACEHOLDER` stub from Phase B step 4 is replaced in-place via the Dokploy UI.
+
 Tell the user verbatim:
-> GitHub → Settings → Developer settings → Personal access tokens (classic) → Generate new token → scope `read:packages` only → set expiration as you prefer → generate → paste it in your next message.
+> 1. GitHub → Settings → Developer settings → Personal access tokens (classic) → Generate new token → scope `read:packages` **only** → set expiration to **90 days** (GitHub's recommended max for machine credentials; do not pick "No expiration") → generate → copy the token to your clipboard.
+> 2. Dokploy → Projects → *your project* → *your app* → General → Docker provider → paste the token into the **Password** field → Save.
+> 3. Reply here with "saved" (no token, no paste).
 
-When they paste the PAT, immediately call `mcp__dokploy-mcp__application-saveDockerProvider` again with the same args as Phase B step 4 but `password: "<the-real-PAT>"`.
+Only when they confirm "saved" do you move to Phase F.
 
-Warn them: the PAT is now in this conversation's transcript. If the transcript is stored anywhere beyond their machine, they should rotate (Developer settings → Personal access tokens → Revoke).
+Rotation, if it's ever needed, follows the same path: revoke in GitHub, generate a new PAT, paste it into the Dokploy UI. No chat step.
 
-Why this step isn't automated: the `gh` CLI token doesn't carry `read:packages` by default (scopes are typically `repo, read:org, gist, admin:public_key`), and running `gh auth refresh -s read:packages` would give you a user-scoped OAuth token with every other scope still attached — too much privilege to stash as a service password. A dedicated classic PAT scoped to `read:packages` is the cleanest answer.
+Why this step isn't automated: the `gh` CLI token doesn't carry `read:packages` by default (scopes are typically `repo, read:org, gist, admin:public_key`), and running `gh auth refresh -s read:packages` would give you a user-scoped OAuth token with every other scope still attached — too much privilege to stash as a service password. A dedicated classic PAT scoped to `read:packages`, set via the Dokploy UI, is the cleanest answer.
 
 ## Phase F — First deploy
 
