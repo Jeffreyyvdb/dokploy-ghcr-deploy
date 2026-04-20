@@ -1,6 +1,6 @@
 ---
 name: dokploy-ghcr-deploy
-description: Set up automatic build + deploy of a Dockerized repo to a self-hosted Dokploy instance using GitHub Actions, GitHub Container Registry (GHCR), and the Dokploy MCP. Use this skill whenever the user wants to auto-deploy a repo to Dokploy, set up CI/CD targeting Dokploy, ship a container to their own Dokploy server, configure a new app on Dokploy from an existing repo, or wire GitHub Actions to push an image and trigger a Dokploy redeploy — even if they don't mention "GHCR" or "GitHub Actions" explicitly. Triggers on phrasings like "deploy this to dokploy", "set up dokploy for this repo", "auto-build and deploy on my server", "ship this app to my dokploy", "I want CI/CD to my self-hosted Dokploy".
+description: Set up automatic build + deploy of a Dockerized repo to a self-hosted Dokploy instance using GitHub Actions, GitHub Container Registry (GHCR), and the Dokploy MCP. Use when the user wants to auto-deploy a repo to Dokploy, set up CI/CD targeting Dokploy, ship a container to their own Dokploy server, configure a new app on Dokploy from an existing repo, or wire GitHub Actions to push an image and trigger a Dokploy redeploy — even if they don't mention "GHCR" or "GitHub Actions" explicitly. Triggers on phrasings like "deploy this to dokploy", "set up dokploy for this repo", "auto-build and deploy on my server", "ship this app to my dokploy", "I want CI/CD to my self-hosted Dokploy".
 ---
 
 # Dokploy + GHCR auto-deploy
